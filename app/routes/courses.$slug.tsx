@@ -9,6 +9,11 @@ import {
 } from "~/services/courseService";
 import { isUserEnrolled } from "~/services/enrollmentService";
 import {
+  getCourseAverageRating,
+  getRatingForUser,
+} from "~/services/ratingService";
+import { StarRating } from "~/components/star-rating";
+import {
   calculateProgress,
   getLessonProgressForCourse,
   getNextIncompleteLesson,
@@ -102,6 +107,14 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     : courseWithDetails.price;
   const tierInfo = getCountryTierInfo(country);
 
+  const { average: avgRating, count: ratingCount } = getCourseAverageRating(
+    course.id
+  );
+  const userRating =
+    currentUserId && enrolled
+      ? (getRatingForUser(currentUserId, course.id)?.rating ?? null)
+      : null;
+
   return {
     course: courseWithDetails,
     salesCopyHtml,
@@ -113,6 +126,9 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     currentUserId,
     pppPrice,
     tierInfo,
+    avgRating,
+    ratingCount,
+    userRating,
   };
 }
 
@@ -181,6 +197,9 @@ export default function CourseDetail({ loaderData }: Route.ComponentProps) {
     currentUserId,
     pppPrice,
     tierInfo,
+    avgRating,
+    ratingCount,
+    userRating,
   } = loaderData;
   const isInstructor = currentUserId === course.instructorId;
   const [searchParams, setSearchParams] = useSearchParams();
@@ -301,7 +320,7 @@ export default function CourseDetail({ loaderData }: Route.ComponentProps) {
         <p className="mb-4 text-lg text-muted-foreground">
           {course.description}
         </p>
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
           <span className="flex items-center gap-1.5">
             <UserAvatar
               name={course.instructorName}
@@ -319,6 +338,9 @@ export default function CourseDetail({ loaderData }: Route.ComponentProps) {
               <Clock className="size-4" />
               {formatDuration(totalDuration, true, false, false)} total
             </span>
+          )}
+          {ratingCount > 0 && (
+            <StarRating mode="display" average={avgRating} count={ratingCount} />
           )}
         </div>
       </div>
@@ -413,6 +435,15 @@ export default function CourseDetail({ loaderData }: Route.ComponentProps) {
                       Buy More Seats
                     </Button>
                   </Link>
+                  <div className="pt-2">
+                    <StarRating
+                      mode="interactive"
+                      courseId={course.id}
+                      currentRating={userRating}
+                      average={avgRating}
+                      count={ratingCount}
+                    />
+                  </div>
                 </>
               ) : (
                 enrollButton
