@@ -26,7 +26,10 @@ import {
   getBestAttempt,
 } from "~/services/quizService";
 import { computeResult } from "~/services/quizScoringService";
-import { LessonProgressStatus } from "~/db/schema";
+import { getUserById } from "~/services/userService";
+import { listComments } from "~/services/commentService";
+import { LessonProgressStatus, UserRole } from "~/db/schema";
+import { LessonComments } from "~/components/lesson-comments";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import {
@@ -248,6 +251,26 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     }
   }
 
+  // Load comments with rendered markdown bodies
+  const currentUser = currentUserId ? getUserById(currentUserId) : null;
+  const rawComments = listComments(lessonId);
+  const comments = await Promise.all(
+    rawComments.map(async (c) => ({
+      id: c.id,
+      bodyHtml: await renderMarkdown(c.body),
+      createdAt: c.createdAt,
+      userId: c.userId,
+      userName: c.userName,
+      userRole: c.userRole,
+      userAvatarUrl: c.userAvatarUrl,
+    }))
+  );
+
+  const isPrivileged =
+    currentUser?.role === UserRole.Instructor ||
+    currentUser?.role === UserRole.Admin;
+  const canComment = enrolled || isPrivileged;
+
   return {
     course: {
       id: courseWithDetails.id,
@@ -281,6 +304,9 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     pppBlocked,
     pppBlockedCountry,
     pppPurchaseCountry,
+    comments,
+    canComment,
+    currentUserRole: currentUser?.role ?? null,
   };
 }
 
@@ -382,6 +408,9 @@ export default function LessonViewer({ loaderData }: Route.ComponentProps) {
     pppBlocked,
     pppBlockedCountry,
     pppPurchaseCountry,
+    comments,
+    canComment,
+    currentUserRole,
   } = loaderData;
   const [autoplay, toggleAutoplay] = useAutoplay();
   const fetcher = useFetcher({ key: `mark-complete-${lesson.id}` });
@@ -591,6 +620,15 @@ export default function LessonViewer({ loaderData }: Route.ComponentProps) {
               )}
             </div>
           )}
+
+          {/* Comments */}
+          <LessonComments
+            lessonId={lesson.id}
+            comments={comments}
+            currentUserId={currentUserId}
+            currentUserRole={currentUserRole}
+            canComment={canComment}
+          />
 
           {/* Prev/Next Navigation */}
           <div className="flex items-center justify-between border-t pt-6">

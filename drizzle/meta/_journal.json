@@ -29,6 +29,13 @@
       "when": 1780332314378,
       "tag": "0003_first_the_captain",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1780341570394,
+      "tag": "0004_parched_power_man",
+      "breakpoints": true
     }
   ]
 }
