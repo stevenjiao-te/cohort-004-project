@@ -17,5 +17,5 @@
 # JetBrains
 /.idea/
 
-plans/*
-prd/*
+# plans/*
+# prd/*

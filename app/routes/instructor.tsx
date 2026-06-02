@@ -2,12 +2,14 @@ import { Link } from "react-router";
 import type { Route } from "./+types/instructor";
 import { getCoursesByInstructor, getLessonCountForCourse } from "~/services/courseService";
 import { getEnrollmentCountForCourse } from "~/services/enrollmentService";
+import { getInstructorTotalEarnings } from "~/services/analyticsService";
 import { getCurrentUserId } from "~/lib/session";
 import { getUserById } from "~/services/userService";
 import { Card, CardContent, CardFooter, CardHeader } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Skeleton } from "~/components/ui/skeleton";
-import { AlertTriangle, BookOpen, GraduationCap, Plus, Users } from "lucide-react";
+import { AlertTriangle, BookOpen, DollarSign, GraduationCap, Plus, Users } from "lucide-react";
+import { formatPrice } from "~/lib/utils";
 import { CourseImage } from "~/components/course-image";
 import { data, isRouteErrorResponse } from "react-router";
 import { CourseStatus, UserRole } from "~/db/schema";
@@ -56,7 +58,9 @@ export async function loader({ request }: Route.LoaderArgs) {
     };
   });
 
-  return { courses: coursesWithStats };
+  const totalEarnings = getInstructorTotalEarnings({ instructorId: currentUserId });
+
+  return { courses: coursesWithStats, totalEarnings };
 }
 
 function statusBadge(status: string) {
@@ -121,7 +125,7 @@ export function HydrateFallback() {
 export default function InstructorDashboard({
   loaderData,
 }: Route.ComponentProps) {
-  const { courses } = loaderData;
+  const { courses, totalEarnings } = loaderData;
 
   return (
     <div className="mx-auto max-w-7xl p-6 lg:p-8">
@@ -147,6 +151,21 @@ export default function InstructorDashboard({
             New Course
           </Button>
         </Link>
+      </div>
+
+      {/* Total earnings summary */}
+      <div className="mb-8">
+        <Card className="w-fit">
+          <CardContent className="flex items-center gap-3 px-6 py-4">
+            <DollarSign className="size-5 text-muted-foreground" />
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                All-Time Earnings
+              </p>
+              <p className="text-2xl font-bold">{formatPrice(totalEarnings)}</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {courses.length === 0 ? (
