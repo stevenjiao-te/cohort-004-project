@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createTestDb, seedBaseData } from "~/test/setup";
 import * as schema from "~/db/schema";
+import { getNotifications } from "./notificationService";
 
 let testDb: ReturnType<typeof createTestDb>;
 let base: ReturnType<typeof seedBaseData>;
@@ -248,6 +249,36 @@ describe("enrollmentService", () => {
 
     it("returns empty array when course has no enrollments", () => {
       expect(getCourseEnrolledStudents(base.course.id)).toHaveLength(0);
+    });
+  });
+
+  describe("enrollment-to-notification integration", () => {
+    it("creates a notification for the instructor when a student enrolls", () => {
+      enrollUser(base.user.id, base.course.id, false, false);
+
+      const notifications = getNotifications(base.instructor.id, 10, 0);
+      expect(notifications).toHaveLength(1);
+    });
+
+    it("notification has correct type, title, message, and linkUrl", () => {
+      enrollUser(base.user.id, base.course.id, false, false);
+
+      const [n] = getNotifications(base.instructor.id, 10, 0);
+      expect(n.type).toBe(schema.NotificationType.Enrollment);
+      expect(n.title).toBe("New Enrollment");
+      expect(n.message).toBe("Test User enrolled in Test Course");
+      expect(n.linkUrl).toBe(`/instructor/${base.course.id}/students`);
+    });
+
+    it("notification is sent to the course instructor, not the enrolling student", () => {
+      enrollUser(base.user.id, base.course.id, false, false);
+
+      const instructorNotifs = getNotifications(base.instructor.id, 10, 0);
+      const studentNotifs = getNotifications(base.user.id, 10, 0);
+
+      expect(instructorNotifs).toHaveLength(1);
+      expect(instructorNotifs[0].recipientUserId).toBe(base.instructor.id);
+      expect(studentNotifs).toHaveLength(0);
     });
   });
 });
