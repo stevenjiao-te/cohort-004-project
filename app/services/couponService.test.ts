@@ -167,6 +167,84 @@ describe("couponService", () => {
     });
   });
 
+  describe("redeemCoupon — notifications", () => {
+    it("creates a notification for each team admin on successful redemption", () => {
+      const { team, purchase } = setupTeamAndPurchase();
+      const [coupon] = generateCoupons(team.id, base.course.id, purchase.id, 1);
+      const redeemer = createRedeemer();
+
+      redeemCoupon(coupon.code, redeemer.id, "US");
+
+      const notifications = testDb
+        .select()
+        .from(schema.notifications)
+        .all();
+
+      expect(notifications).toHaveLength(1);
+      expect(notifications[0].recipientUserId).toBe(base.user.id);
+      expect(notifications[0].type).toBe(schema.NotificationType.CouponRedemption);
+    });
+
+    it("notification has correct title, message, and link", () => {
+      const { team, purchase } = setupTeamAndPurchase();
+      const [coupon] = generateCoupons(team.id, base.course.id, purchase.id, 3);
+      const redeemer = createRedeemer();
+
+      redeemCoupon(coupon.code, redeemer.id, "US");
+
+      const [notification] = testDb.select().from(schema.notifications).all();
+
+      expect(notification.title).toBe("Seat Claimed");
+      expect(notification.message).toBe(
+        `Redeemer redeemed a coupon for Test Course (2 of 3 seats remaining)`
+      );
+      expect(notification.linkUrl).toBe("/team");
+    });
+
+    it("seat count reflects remaining seats after redemption", () => {
+      const { team, purchase } = setupTeamAndPurchase();
+      const coupons = generateCoupons(team.id, base.course.id, purchase.id, 5);
+      const redeemer = createRedeemer();
+
+      redeemCoupon(coupons[0].code, redeemer.id, "US");
+
+      const [notification] = testDb.select().from(schema.notifications).all();
+      expect(notification.message).toContain("4 of 5 seats remaining");
+    });
+
+    it("sends a notification to every team admin", () => {
+      const { team, purchase } = setupTeamAndPurchase();
+
+      const secondAdmin = testDb
+        .insert(schema.users)
+        .values({ name: "Second Admin", email: "admin2@example.com", role: schema.UserRole.Student })
+        .returning()
+        .get();
+      testDb
+        .insert(schema.teamMembers)
+        .values({ teamId: team.id, userId: secondAdmin.id, role: schema.TeamMemberRole.Admin })
+        .run();
+
+      const [coupon] = generateCoupons(team.id, base.course.id, purchase.id, 1);
+      const redeemer = createRedeemer();
+
+      redeemCoupon(coupon.code, redeemer.id, "US");
+
+      const notifications = testDb.select().from(schema.notifications).all();
+      expect(notifications).toHaveLength(2);
+      const recipientIds = notifications.map((n) => n.recipientUserId);
+      expect(recipientIds).toContain(base.user.id);
+      expect(recipientIds).toContain(secondAdmin.id);
+    });
+
+    it("does not create notifications on failed redemption", () => {
+      redeemCoupon("nonexistent-code", 999, "US");
+
+      const notifications = testDb.select().from(schema.notifications).all();
+      expect(notifications).toHaveLength(0);
+    });
+  });
+
   describe("redeemCoupon", () => {
     it("redeems a valid coupon and enrolls the user", () => {
       const { team, purchase } = setupTeamAndPurchase();
