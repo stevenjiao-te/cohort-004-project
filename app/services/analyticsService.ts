@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, or, sql } from "drizzle-orm";
+import { and, eq, gte, isNotNull, or, sql } from "drizzle-orm";
 import { db } from "~/db";
 import {
   courses,
@@ -10,7 +10,76 @@ import {
   purchases,
   quizAttempts,
   quizzes,
+  users,
 } from "~/db/schema";
+
+export type TimePeriod = "7d" | "30d" | "12m" | "all";
+
+export function getPeriodCutoff({ period }: { period: TimePeriod }): string | null {
+  if (period === "all") return null;
+  const now = new Date();
+  if (period === "7d") now.setDate(now.getDate() - 7);
+  else if (period === "30d") now.setDate(now.getDate() - 30);
+  else if (period === "12m") now.setMonth(now.getMonth() - 12);
+  return now.toISOString();
+}
+
+export function getPlatformAnalytics({ period }: { period: TimePeriod }) {
+  const cutoff = getPeriodCutoff({ period });
+
+  const revenueConditions = cutoff
+    ? [gte(purchases.createdAt, cutoff)]
+    : [];
+
+  const revenueResult = db
+    .select({ total: sql<number>`coalesce(sum(${purchases.pricePaid}), 0)` })
+    .from(purchases)
+    .where(revenueConditions.length > 0 ? and(...revenueConditions) : undefined)
+    .get();
+  const totalRevenue = Number(revenueResult?.total ?? 0);
+
+  const enrollmentConditions = cutoff
+    ? [gte(enrollments.enrolledAt, cutoff)]
+    : [];
+
+  const enrollmentResult = db
+    .select({ count: sql<number>`count(*)` })
+    .from(enrollments)
+    .where(
+      enrollmentConditions.length > 0
+        ? and(...enrollmentConditions)
+        : undefined
+    )
+    .get();
+  const totalEnrollments = Number(enrollmentResult?.count ?? 0);
+
+  const topCourseConditions = cutoff
+    ? [gte(purchases.createdAt, cutoff)]
+    : [];
+
+  const topCourseResult = db
+    .select({
+      courseTitle: courses.title,
+      revenue: sql<number>`coalesce(sum(${purchases.pricePaid}), 0)`,
+    })
+    .from(purchases)
+    .innerJoin(courses, eq(purchases.courseId, courses.id))
+    .where(
+      topCourseConditions.length > 0
+        ? and(...topCourseConditions)
+        : undefined
+    )
+    .groupBy(purchases.courseId)
+    .orderBy(sql`sum(${purchases.pricePaid}) desc`)
+    .limit(1)
+    .get();
+
+  const topCourse = topCourseResult
+    ? { title: topCourseResult.courseTitle, revenue: Number(topCourseResult.revenue) }
+    : null;
+
+  return { totalRevenue, totalEnrollments, topCourse };
+}
 
 const QUIZ_BUCKET_LABELS = ["0–20%", "20–40%", "40–60%", "60–80%", "80–100%"];
 

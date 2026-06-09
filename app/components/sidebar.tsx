@@ -5,6 +5,7 @@ import { UserRole, NotificationType } from "~/db/schema";
 import { UserAvatar } from "~/components/user-avatar";
 import { NotificationBell } from "~/components/NotificationBell";
 import {
+  BarChart3,
   BookOpen,
   LayoutDashboard,
   GraduationCap,
@@ -96,6 +97,12 @@ const navItems: NavItem[] = [
     label: "Categories",
     to: "/admin/categories",
     icon: <Tag className="size-4" />,
+    roles: [UserRole.Admin],
+  },
+  {
+    label: "Analytics",
+    to: "/admin/analytics",
+    icon: <BarChart3 className="size-4" />,
     roles: [UserRole.Admin],
   },
 ];

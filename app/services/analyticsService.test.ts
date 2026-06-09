@@ -15,6 +15,7 @@ vi.mock("~/db", () => ({
 import {
   getCourseAnalytics,
   getInstructorTotalEarnings,
+  getPlatformAnalytics,
 } from "./analyticsService";
 
 describe("analyticsService", () => {
@@ -827,6 +828,249 @@ describe("analyticsService", () => {
         instructorId: base.instructor.id,
       });
       expect(result).toBe(4999);
+    });
+  });
+
+  describe("getPlatformAnalytics", () => {
+    describe("totalRevenue", () => {
+      it("returns 0 when there are no purchases", () => {
+        const result = getPlatformAnalytics({ period: "all" });
+        expect(result.totalRevenue).toBe(0);
+      });
+
+      it("returns the sum of all purchases across all courses", () => {
+        const course2 = testDb
+          .insert(schema.courses)
+          .values({
+            title: "Second Course",
+            slug: "second-course",
+            description: "Another course",
+            instructorId: base.instructor.id,
+            categoryId: base.category.id,
+            status: schema.CourseStatus.Published,
+          })
+          .returning()
+          .get();
+
+        testDb
+          .insert(schema.purchases)
+          .values({
+            userId: base.user.id,
+            courseId: base.course.id,
+            pricePaid: 4999,
+          })
+          .run();
+        testDb
+          .insert(schema.purchases)
+          .values({
+            userId: base.user.id,
+            courseId: course2.id,
+            pricePaid: 2999,
+          })
+          .run();
+
+        const result = getPlatformAnalytics({ period: "all" });
+        expect(result.totalRevenue).toBe(7998);
+      });
+
+      it("filters revenue by time period", () => {
+        const now = new Date();
+        const fiveDaysAgo = new Date(now);
+        fiveDaysAgo.setDate(now.getDate() - 5);
+        const fiftyDaysAgo = new Date(now);
+        fiftyDaysAgo.setDate(now.getDate() - 50);
+
+        testDb
+          .insert(schema.purchases)
+          .values({
+            userId: base.user.id,
+            courseId: base.course.id,
+            pricePaid: 4999,
+            createdAt: fiveDaysAgo.toISOString(),
+          })
+          .run();
+        testDb
+          .insert(schema.purchases)
+          .values({
+            userId: base.user.id,
+            courseId: base.course.id,
+            pricePaid: 2999,
+            createdAt: fiftyDaysAgo.toISOString(),
+          })
+          .run();
+
+        expect(getPlatformAnalytics({ period: "7d" }).totalRevenue).toBe(4999);
+        expect(getPlatformAnalytics({ period: "30d" }).totalRevenue).toBe(4999);
+        expect(getPlatformAnalytics({ period: "all" }).totalRevenue).toBe(7998);
+      });
+    });
+
+    describe("totalEnrollments", () => {
+      it("returns 0 when there are no enrollments", () => {
+        const result = getPlatformAnalytics({ period: "all" });
+        expect(result.totalEnrollments).toBe(0);
+      });
+
+      it("returns the count of all enrollments across all courses", () => {
+        const student2 = testDb
+          .insert(schema.users)
+          .values({
+            name: "Student Two",
+            email: "student2@example.com",
+            role: schema.UserRole.Student,
+          })
+          .returning()
+          .get();
+
+        testDb
+          .insert(schema.enrollments)
+          .values({ userId: base.user.id, courseId: base.course.id })
+          .run();
+        testDb
+          .insert(schema.enrollments)
+          .values({ userId: student2.id, courseId: base.course.id })
+          .run();
+
+        const result = getPlatformAnalytics({ period: "all" });
+        expect(result.totalEnrollments).toBe(2);
+      });
+
+      it("filters enrollments by time period", () => {
+        const now = new Date();
+        const fiveDaysAgo = new Date(now);
+        fiveDaysAgo.setDate(now.getDate() - 5);
+        const fiftyDaysAgo = new Date(now);
+        fiftyDaysAgo.setDate(now.getDate() - 50);
+
+        testDb
+          .insert(schema.enrollments)
+          .values({
+            userId: base.user.id,
+            courseId: base.course.id,
+            enrolledAt: fiveDaysAgo.toISOString(),
+          })
+          .run();
+
+        const student2 = testDb
+          .insert(schema.users)
+          .values({
+            name: "Student Two",
+            email: "student2@example.com",
+            role: schema.UserRole.Student,
+          })
+          .returning()
+          .get();
+
+        testDb
+          .insert(schema.enrollments)
+          .values({
+            userId: student2.id,
+            courseId: base.course.id,
+            enrolledAt: fiftyDaysAgo.toISOString(),
+          })
+          .run();
+
+        expect(getPlatformAnalytics({ period: "7d" }).totalEnrollments).toBe(1);
+        expect(getPlatformAnalytics({ period: "30d" }).totalEnrollments).toBe(1);
+        expect(getPlatformAnalytics({ period: "all" }).totalEnrollments).toBe(2);
+      });
+    });
+
+    describe("topCourse", () => {
+      it("returns null when there are no purchases", () => {
+        const result = getPlatformAnalytics({ period: "all" });
+        expect(result.topCourse).toBeNull();
+      });
+
+      it("returns the course with the highest revenue", () => {
+        const course2 = testDb
+          .insert(schema.courses)
+          .values({
+            title: "Popular Course",
+            slug: "popular-course",
+            description: "Very popular",
+            instructorId: base.instructor.id,
+            categoryId: base.category.id,
+            status: schema.CourseStatus.Published,
+          })
+          .returning()
+          .get();
+
+        testDb
+          .insert(schema.purchases)
+          .values({
+            userId: base.user.id,
+            courseId: base.course.id,
+            pricePaid: 2999,
+          })
+          .run();
+        testDb
+          .insert(schema.purchases)
+          .values({
+            userId: base.user.id,
+            courseId: course2.id,
+            pricePaid: 9999,
+          })
+          .run();
+
+        const result = getPlatformAnalytics({ period: "all" });
+        expect(result.topCourse).toEqual({
+          title: "Popular Course",
+          revenue: 9999,
+        });
+      });
+
+      it("respects time period for top course calculation", () => {
+        const course2 = testDb
+          .insert(schema.courses)
+          .values({
+            title: "Recent Course",
+            slug: "recent-course",
+            description: "Recent",
+            instructorId: base.instructor.id,
+            categoryId: base.category.id,
+            status: schema.CourseStatus.Published,
+          })
+          .returning()
+          .get();
+
+        const now = new Date();
+        const fiveDaysAgo = new Date(now);
+        fiveDaysAgo.setDate(now.getDate() - 5);
+        const fiftyDaysAgo = new Date(now);
+        fiftyDaysAgo.setDate(now.getDate() - 50);
+
+        testDb
+          .insert(schema.purchases)
+          .values({
+            userId: base.user.id,
+            courseId: base.course.id,
+            pricePaid: 9999,
+            createdAt: fiftyDaysAgo.toISOString(),
+          })
+          .run();
+        testDb
+          .insert(schema.purchases)
+          .values({
+            userId: base.user.id,
+            courseId: course2.id,
+            pricePaid: 2999,
+            createdAt: fiveDaysAgo.toISOString(),
+          })
+          .run();
+
+        const result7d = getPlatformAnalytics({ period: "7d" });
+        expect(result7d.topCourse).toEqual({
+          title: "Recent Course",
+          revenue: 2999,
+        });
+
+        const resultAll = getPlatformAnalytics({ period: "all" });
+        expect(resultAll.topCourse).toEqual({
+          title: "Test Course",
+          revenue: 9999,
+        });
+      });
     });
   });
 });
